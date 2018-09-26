@@ -20,7 +20,7 @@ void runVertexShader( Mesh &mesh,
                       float scale,
 					  unsigned int const width,
 					  unsigned int const height,
-				  	  float const rotationAngle = 0)
+				  	  float rotationAngle)
 {
 	float const pi = std::acos(-1);
 	// The matrices defined below are the ones used to transform the vertices and normals.
@@ -143,6 +143,7 @@ void rasteriseTriangles( Mesh &transformedMesh,
 }
 
 void renderMeshFractal(
+				float rotationAngle,
 				std::vector<Mesh> &meshes,
 				std::vector<Mesh> &transformedMeshes,
 				unsigned int width,
@@ -158,7 +159,7 @@ void renderMeshFractal(
 	for (unsigned int i = 0; i < meshes.size(); i++) {
 		Mesh &mesh = meshes.at(i);
 		Mesh &transformedMesh = transformedMeshes.at(i);
-		runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height);
+		runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height, rotationAngle);
 		rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
 	}
 
@@ -184,7 +185,7 @@ void renderMeshFractal(
 					distanceOffset + offset * (largestBoundingBoxSide / 2.0f) * scale
 				);
 
-				renderMeshFractal(meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit, smallerScale, displacedOffset);
+				renderMeshFractal(rotationAngle, meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit, smallerScale, displacedOffset);
 			}
 		}
 	}
@@ -192,7 +193,7 @@ void renderMeshFractal(
 }
 
 // This function kicks off the rasterisation process.
-std::vector<unsigned char> rasterise(std::vector<Mesh> &meshes, unsigned int width, unsigned int height, unsigned int depthLimit) {
+std::vector<unsigned char> rasterise(float rotationAngle, std::vector<Mesh> &meshes, unsigned int width, unsigned int height, unsigned int depthLimit) {
 	// We first need to allocate some buffers.
 	// The framebuffer contains the image being rendered.
 	std::vector<unsigned char> frameBuffer;
@@ -228,7 +229,7 @@ std::vector<unsigned char> rasterise(std::vector<Mesh> &meshes, unsigned int wid
 	float largestBoundingBoxSide = std::max(std::max(boundingBoxDimensions.x, boundingBoxDimensions.y), boundingBoxDimensions.z);
 
 
-	renderMeshFractal(meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit);//depthLimit);
+	renderMeshFractal(rotationAngle, meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit);//depthLimit);
 
 
 	std::cout << "finished!" << std::endl;

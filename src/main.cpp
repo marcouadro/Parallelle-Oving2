@@ -1,11 +1,11 @@
 #include <iostream>
 #include <cstring>
-#include <ctime>
-#include <cstdlib>
 #include "utilities/OBJLoader.hpp"
 #include "utilities/lodepng.h"
 #include "rasteriser.hpp"
 #include "mpi.h"
+
+float rotationAngle(int world_size, float world_rank);
 
 int main(int argc, char **argv) {
 
@@ -43,15 +43,71 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	typedef struct vectors {
+		std::vector<float4> vertices;
+		std::vector<float3> textures;
+		std::vector<float3> normals;
+	} vectors;
 
-	//We want to rotate a picture 360 degrees equally distributed on each rank.
-	float rotationAngle = 360/world_size*world_rank;
-	std::cout << "world rank: " << world_rank << " ANGLE: " << rotationAngle << std::endl;
+	MPI_Datatype MPI_vectors;
+	constexpr int const mpi_vectors_blocklength[3] = {216, 216, 216};
+	constexpr MPI_Aint const mpi_vectors_displacement[3] = {
+			offsetof(vectors, vertices),
+			offsetof(vectors, textures),
+			offsetof(vectors, normals)
+	};
+	constexpr MPI_Datatype const mpi_vectors_types[3] = {
+			MPI_FLOAT,
+			MPI_FLOAT,
+			MPI_FLOAT
+	};
+	MPI_Type_create_struct(
+			3,
+			mpi_vectors_blocklength,
+			mpi_vectors_displacement,
+			mpi_vectors_types,
+			&MPI_vectors);
+	MPI_Type_commit(&MPI_vectors);
+
 
 	std::cout << "Loading '" << input << "' file... " << std::endl;
+	std::vector<Mesh> meshs;
 
-	std::vector<Mesh> meshs = loadWavefront(input, false);
-	std::vector<unsigned char> frameBuffer = rasterise(rotationAngle, meshs, width, height, depth);;
+	vectors val;
+	int size;
+    if (world_rank == 0) { //Master
+        meshs = loadWavefront(input, false);
+        for(unsigned int i = 0; i < meshs.size(); ++i){
+           for(unsigned int j = 0; j < meshs.at(i).vertices.size(); ++j){
+               val.vertices.emplace_back(meshs.at(i).vertices.at(j)); //Flatten array
+               val.textures.emplace_back(meshs.at(i).textures.at(j));
+               val.normals.emplace_back(meshs.at(i).normals.at(j));
+
+               /*val.vertices.at(i) = meshs.at(i).vertices.at(j);
+               val.textures.at(i) = meshs.at(i).textures.at(j);
+               val.normals.at(i) = meshs.at(i).normals.at(j);*/
+           }
+        }
+        size = (int) val.vertices.size()*3;
+    }
+    //Synchronize
+    MPI_Barrier(MPI_COMM_WORLD);
+    std::cout << "SIZE of vert: " << size << std::endl;
+    MPI_Bcast(&val, size, MPI_vectors, 0, MPI_COMM_WORLD);
+    std::cout << "SIZE AFTER BCAST: " << size << std::endl;
+
+    meshs = loadWavefront(input, false); //Each rank loads the mesh file.
+
+   // unsigned int size = (int) meshs.at(0).vertices.size()/meshs.size();
+
+
+    unsigned int indexCounter = 0;
+
+    for(unsigned int i = 0; i < val.vertices.size(); ++i) {
+    }
+
+
+	std::vector<unsigned char> frameBuffer = rasterise(1, meshs, width, height, depth);
 
 	//append a number to the ending of the file name.
 	output = output.substr(0, output.find(".", 0)) + std::to_string(world_rank) + ".png";
@@ -64,6 +120,9 @@ int main(int argc, char **argv) {
 	{
 		std::cout << "An error occurred while writing the image file: " << error << ": " << lodepng_error_text(error) << std::endl;
 	}
+	MPI_Finalize();
+}
 
-	return 0;
+float rotationAngle(int world_size, float world_rank){
+    return 360/world_size*world_rank;
 }

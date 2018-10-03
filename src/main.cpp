@@ -43,69 +43,81 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	typedef struct vectors {
-		std::vector<float4> vertices;
-		std::vector<float3> textures;
-		std::vector<float3> normals;
-	} vectors;
-
-	MPI_Datatype MPI_vectors;
-	constexpr int const mpi_vectors_blocklength[3] = {216, 216, 216};
-	constexpr MPI_Aint const mpi_vectors_displacement[3] = {
-			offsetof(vectors, vertices),
-			offsetof(vectors, textures),
-			offsetof(vectors, normals)
+	MPI_Datatype MPI_FLOAT4;
+	constexpr int const MPI_FLOAT4_blocklength[4] = {1, 1, 1, 1};
+	constexpr MPI_Aint const MPI_FLOAT4_displacement[4] = {
+			offsetof(float4, x),
+			offsetof(float4, y),
+			offsetof(float4, z),
+			offsetof(float4, w)
 	};
-	constexpr MPI_Datatype const mpi_vectors_types[3] = {
+	constexpr MPI_Datatype const MPI_FLOAT4_types[4] = {
+			MPI_FLOAT,
+			MPI_FLOAT,
+			MPI_FLOAT,
+			MPI_FLOAT
+	};
+	MPI_Type_create_struct(
+			4,
+			MPI_FLOAT4_blocklength,
+			MPI_FLOAT4_displacement,
+			MPI_FLOAT4_types,
+			&MPI_FLOAT4);
+	MPI_Type_commit(&MPI_FLOAT4);
+
+
+	MPI_Datatype MPI_FLOAT3;
+	constexpr int const MPI_FLOAT3_blocklength[3] = {1, 1, 1};
+	constexpr MPI_Aint const MPI_FLOAT3_displacement[3] = {
+			offsetof(float3, x),
+			offsetof(float3, y),
+			offsetof(float3, z)
+	};
+	constexpr MPI_Datatype const MPI_FLOAT3_types[3] = {
 			MPI_FLOAT,
 			MPI_FLOAT,
 			MPI_FLOAT
 	};
 	MPI_Type_create_struct(
 			3,
-			mpi_vectors_blocklength,
-			mpi_vectors_displacement,
-			mpi_vectors_types,
-			&MPI_vectors);
-	MPI_Type_commit(&MPI_vectors);
+			MPI_FLOAT3_blocklength,
+			MPI_FLOAT3_displacement,
+			MPI_FLOAT3_types,
+			&MPI_FLOAT3);
+	MPI_Type_commit(&MPI_FLOAT3);
+
 
 
 	std::cout << "Loading '" << input << "' file... " << std::endl;
 	std::vector<Mesh> meshs;
 
-	vectors val;
-	int size;
-    if (world_rank == 0) { //Master
-        meshs = loadWavefront(input, false);
-        for(unsigned int i = 0; i < meshs.size(); ++i){
-           for(unsigned int j = 0; j < meshs.at(i).vertices.size(); ++j){
-               val.vertices.emplace_back(meshs.at(i).vertices.at(j)); //Flatten array
-               val.textures.emplace_back(meshs.at(i).textures.at(j));
-               val.normals.emplace_back(meshs.at(i).normals.at(j));
+	meshs = loadWavefront(input, false);
+	int vertSize;
+	int normalsSize;
+	int texturesSize;
 
-               /*val.vertices.at(i) = meshs.at(i).vertices.at(j);
-               val.textures.at(i) = meshs.at(i).textures.at(j);
-               val.normals.at(i) = meshs.at(i).normals.at(j);*/
-           }
-        }
-        size = (int) val.vertices.size()*3;
-    }
-    //Synchronize
-    MPI_Barrier(MPI_COMM_WORLD);
-    std::cout << "SIZE of vert: " << size << std::endl;
-    MPI_Bcast(&val, size, MPI_vectors, 0, MPI_COMM_WORLD);
-    std::cout << "SIZE AFTER BCAST: " << size << std::endl;
+	if(world_rank != 0){
+		for(unsigned int i = 0; i < meshs.size(); ++i){
 
-    meshs = loadWavefront(input, false); //Each rank loads the mesh file.
+			vertSize = meshs.at(i).vertices.size();
+			normalsSize = meshs.at(i).normals.size();
+			texturesSize = meshs.at(i).textures.size();
 
-   // unsigned int size = (int) meshs.at(0).vertices.size()/meshs.size();
+			meshs.at(i).vertices.clear();
+			meshs.at(i).normals.clear();
+			meshs.at(i).textures.clear();
 
+			meshs.at(i).vertices.resize(vertSize);
+			meshs.at(i).normals.resize(normalsSize);
+			meshs.at(i).textures.resize(texturesSize);
+		}
+	}
 
-    unsigned int indexCounter = 0;
-
-    for(unsigned int i = 0; i < val.vertices.size(); ++i) {
-    }
-
+	for(unsigned int i = 0; i < meshs.size(); ++i) {
+		MPI_Bcast(&meshs.at(i).vertices.at(0), meshs.at(i).vertices.size() , MPI_FLOAT4, 0, MPI_COMM_WORLD);
+		MPI_Bcast(&meshs.at(i).normals.at(0), meshs.at(i).normals.size() , MPI_FLOAT3, 0, MPI_COMM_WORLD);
+		MPI_Bcast(&meshs.at(i).textures.at(0), meshs.at(i).textures.size() , MPI_FLOAT3, 0, MPI_COMM_WORLD);
+	}
 
 	std::vector<unsigned char> frameBuffer = rasterise(1, meshs, width, height, depth);
 
